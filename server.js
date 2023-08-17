@@ -83,7 +83,12 @@ async function authCheck(req, res, next) {
 // Middleware
 //////////////////////////////
 // cors for preventing cors errors (allows all requests from other origins)
-app.use(cors());
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  })
+);
 // cookie parser for reading cookies (needed for auth)
 app.use(cookieParser());
 // morgan for logging requests
@@ -103,7 +108,7 @@ app.use(express.json());
 app.get("/people", authCheck, async (req, res) => {
   try {
     // fetch all people from database
-    const people = await People.find({});
+    const people = await People.find({username: req.payload.username});
     // send json of all people
     res.json(people);
   } catch (error) {
@@ -115,10 +120,10 @@ app.get("/people", authCheck, async (req, res) => {
 // CREATE - POST - /people - create a new person
 app.post("/people", authCheck, async (req, res) => {
   try {
-    // create the new person
-    const person = await People.create(req.body);
     // add the username to the person object
-    person.username = req.payload.username;
+    req.body.username = req.payload.username;
+    // add the username to the person
+      const person = await People.create(req.body);
     // send newly created person as JSON
     res.json(person);
   } catch (error) {
@@ -192,26 +197,46 @@ app.post('/signup', async(req, res) => {
 // the user object if they match with a cookie including a signed jWT
 app.post('/login', async(req, res) => {
   try {
+    
     // deconstruct the username & password from the body
     const {username, password} = req.body;
+    
     // search the db for a user w/ the provided username
     const user = await User.findOne({username});  // findOne finds & returns username that matches
     // if no user is fou,d return an error
+    
     if(!user) {
       throw new Error("No user with that username found")
     }
+    
     // if user is found, let's compare the provided pw w/ the pw on the user ojbect
     const passwordCheck = await bcrypt.compare(password, user.password);
+   
     // if the passwrods don't match, return an error
     if(!passwordCheck) {
       throw new Error("Password does not match")
     }
     // create a token with the username in the payload 
     const token = jwt.sign({username: user.username}, process.env.SECRET);
+   
     // send a response with a cookie that includes the token
-    res.cookie("token", token)  // ("name", value)
+    res.cookie("token", token, {
+      // can only be accessed by server requests
+      httpOnly: true,
+      // path = where the cookie is valid
+      path: '/',
+      // domain = what domain the cookie is valid on
+      domain: 'localhost',
+      // secure = only send cookie over https
+      secure: false,
+      // sameSite= only send cookie if the request is coming from the same origin
+      sameSite: 'lax',  // 'strict' | 'lax' | 'none' (secure must br true for none)
+      // maxAge = how long the cookie is valid for in milliseconds
+      maxAge: 3600000,  // 1 hour
+    }); 
+    
     // send the user as json
-    res.json(user)
+    res.json(user);
 
   } catch (error) {
     res.status(400).json({error: error.message})
